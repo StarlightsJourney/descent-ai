@@ -4,6 +4,7 @@ Initial product planning documents for a private collaborative family tree appli
 
 ## Documents
 
+- [Project State](docs/project-state.md)
 - [Product Brief](docs/product-brief.md)
 - [MVP Plan](docs/mvp-plan.md)
 - [Data Model](docs/data-model.md)

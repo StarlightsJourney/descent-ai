@@ -9,6 +9,13 @@ export function getSelectedPerson(tree: FamilyTreeSnapshot): Person | undefined 
   return tree.people.find((person) => person.id === tree.selectedPersonId);
 }
 
+export function getPersonById(
+  tree: FamilyTreeSnapshot,
+  personId: string
+): Person | undefined {
+  return tree.people.find((person) => person.id === personId);
+}
+
 export function getViewerPerson(tree: FamilyTreeSnapshot): Person | undefined {
   return tree.people.find((person) => person.id === tree.currentViewerPersonId);
 }
@@ -78,9 +85,16 @@ export function getPathToSelected(tree: FamilyTreeSnapshot): string[] {
 }
 
 export function getDisplayPathLabels(tree: FamilyTreeSnapshot): string[] {
-  const path = getPathToSelected(tree);
+  return getDisplayPathLabelsForSelection(tree, tree.selectedPersonId);
+}
+
+export function getDisplayPathLabelsForSelection(
+  tree: FamilyTreeSnapshot,
+  selectedPersonId: string
+): string[] {
+  const path = getPathToSelection(tree, selectedPersonId);
   const viewer = getViewerPerson(tree);
-  const selected = getSelectedPerson(tree);
+  const selected = getPersonById(tree, selectedPersonId);
   const nodeMap = getNodeMap(tree);
 
   return path.map((personId, index) => {
@@ -94,6 +108,22 @@ export function getDisplayPathLabels(tree: FamilyTreeSnapshot): string[] {
 
     return nodeMap.get(personId)?.englishTitle ?? personId;
   });
+}
+
+export function getPathToSelection(
+  tree: FamilyTreeSnapshot,
+  selectedPersonId: string
+): string[] {
+  const path = getPathToSelected(tree);
+  if (selectedPersonId === tree.selectedPersonId) {
+    return path;
+  }
+
+  return getPathBetweenPeople(
+    tree.relationships,
+    tree.currentViewerPersonId,
+    selectedPersonId
+  );
 }
 
 function buildAdjacency(relationships: Relationship[]) {
@@ -116,4 +146,55 @@ function appendEdge(adjacency: Map<string, string[]>, from: string, to: string) 
   }
 
   adjacency.set(from, [to]);
+}
+
+function getPathBetweenPeople(
+  relationships: Relationship[],
+  start: string,
+  goal: string
+) {
+  if (start === goal) {
+    return [start];
+  }
+
+  const adjacency = buildAdjacency(relationships);
+  const queue: string[] = [start];
+  const visited = new Set<string>([start]);
+  const parents = new Map<string, string | null>([[start, null]]);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+
+    if (!current) {
+      continue;
+    }
+
+    if (current === goal) {
+      break;
+    }
+
+    for (const next of adjacency.get(current) ?? []) {
+      if (visited.has(next)) {
+        continue;
+      }
+
+      visited.add(next);
+      parents.set(next, current);
+      queue.push(next);
+    }
+  }
+
+  if (!parents.has(goal)) {
+    return [];
+  }
+
+  const path: string[] = [];
+  let cursor: string | null = goal;
+
+  while (cursor) {
+    path.push(cursor);
+    cursor = parents.get(cursor) ?? null;
+  }
+
+  return path.reverse();
 }
