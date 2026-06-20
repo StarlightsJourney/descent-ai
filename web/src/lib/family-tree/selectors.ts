@@ -93,19 +93,9 @@ export function getDisplayPathLabelsForSelection(
   selectedPersonId: string
 ): string[] {
   const path = getPathToSelection(tree, selectedPersonId);
-  const viewer = getViewerPerson(tree);
-  const selected = getPersonById(tree, selectedPersonId);
   const nodeMap = getNodeMap(tree);
 
-  return path.map((personId, index) => {
-    if (index === 0 && viewer) {
-      return viewer.primaryName;
-    }
-
-    if (index === path.length - 1 && selected) {
-      return selected.chineseTitle;
-    }
-
+  return path.map((personId) => {
     return nodeMap.get(personId)?.englishTitle ?? personId;
   });
 }

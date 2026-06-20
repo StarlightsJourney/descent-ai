@@ -16,8 +16,13 @@ type RelationshipRow = Database["public"]["Tables"]["relationships"]["Row"];
 type SuggestedEditRow = Database["public"]["Tables"]["suggested_edits"]["Row"];
 type ActivityLogRow = Database["public"]["Tables"]["activity_logs"]["Row"];
 
-const COLUMN_WIDTH = 250;
-const ROW_HEIGHT = 160;
+const NODE_WIDTH = 208;
+const NODE_HEIGHT = 248;
+const HORIZONTAL_GAP = 72;
+const SPOUSE_GAP = 32;
+const VERTICAL_GAP = 60;
+const COLUMN_WIDTH = NODE_WIDTH + HORIZONTAL_GAP;
+const ROW_HEIGHT = NODE_HEIGHT + VERTICAL_GAP;
 const LEFT_MARGIN = 140;
 const TOP_MARGIN = 76;
 
@@ -131,8 +136,8 @@ function mapPerson(params: {
     years: buildYearsLabel(person),
     photoUrl: person.photo_url,
     avatarLabel: buildAvatarLabel(person.primary_name),
-    description: buildDescription(person, title.englishTitle),
-    personalNote: buildPersonalNote(person, title.englishTitle),
+    description: buildDescription(person),
+    personalNote: buildPersonalNote(person),
     x: position.x,
     y: position.y,
     accent: mapPersonAccent(person, relationships, viewerPersonId),
@@ -523,23 +528,18 @@ function buildYearsLabel(person: PersonRow) {
   return `${birth} - ${death}`;
 }
 
-function buildDescription(person: PersonRow, englishTitle: string) {
+function buildDescription(person: PersonRow) {
   if (person.bio?.trim()) {
     return person.bio.trim();
   }
-
-  const generation =
-    person.generation_index === null ? "an unplaced generation" : `generation ${person.generation_index}`;
-
-  return `${person.primary_name} is currently labeled as ${englishTitle.toLowerCase()} in ${generation}.`;
+  return "";
 }
 
-function buildPersonalNote(person: PersonRow, englishTitle: string) {
+function buildPersonalNote(person: PersonRow) {
   if (person.current_place?.trim()) {
-    return `Current place: ${person.current_place.trim()}.`;
+    return person.current_place.trim();
   }
-
-  return `Quick note: verify ${englishTitle.toLowerCase()} details before using this branch in mutation review flows.`;
+  return "";
 }
 
 function buildAvatarLabel(primaryName: string) {
@@ -650,7 +650,11 @@ function buildLayoutPositions(
     });
   });
 
+  keepSpousesAdjacent(positions, grouped, relationships, viewerPersonId);
   alignChildrenUnderParents(positions, people, relationships);
+  resolveGenerationCollisions(positions, grouped, relationships, viewerPersonId);
+  keepSpousesAdjacent(positions, grouped, relationships, viewerPersonId);
+  resolveGenerationCollisions(positions, grouped, relationships, viewerPersonId);
   return positions;
 }
 
@@ -659,20 +663,237 @@ function alignChildrenUnderParents(
   people: PersonRow[],
   relationships: RelationshipRow[],
 ) {
-  for (const person of people) {
-    const parents = getParentsOf(relationships, person.id)
+  const peopleMap = new Map(people.map((person) => [person.id, person]));
+  const childGroups = groupChildrenByParents(people, relationships, peopleMap);
+
+  for (const group of childGroups) {
+    const parents = group.parentIds
       .map((parentId) => positions.get(parentId))
       .filter((entry): entry is { x: number; y: number } => Boolean(entry));
-    const position = positions.get(person.id);
 
-    if (!position || parents.length === 0) {
+    if (parents.length === 0) {
       continue;
     }
 
-    const averageX =
-      parents.reduce((sum, parent) => sum + parent.x, 0) / parents.length;
-    position.x = averageX;
+    const familyCenterX =
+      parents.reduce((sum, parent) => sum + parent.x + NODE_WIDTH / 2, 0) / parents.length;
+    const familyWidth = getSpanWidth(group.childIds.length, COLUMN_WIDTH);
+    const startX = familyCenterX - familyWidth / 2;
+
+    group.childIds.forEach((childId, index) => {
+      const position = positions.get(childId);
+
+      if (!position) {
+        return;
+      }
+
+      position.x = startX + index * COLUMN_WIDTH;
+    });
   }
+}
+
+function groupChildrenByParents(
+  people: PersonRow[],
+  relationships: RelationshipRow[],
+  peopleMap: Map<string, PersonRow>,
+) {
+  const groups = new Map<string, string[]>();
+
+  for (const person of people) {
+    const parentIds = getParentsOf(relationships, person.id).sort();
+
+    if (parentIds.length === 0) {
+      continue;
+    }
+
+    const key = parentIds.join("|");
+    groups.set(key, [...(groups.get(key) ?? []), person.id]);
+  }
+
+  return Array.from(groups.entries()).map(([key, childIds]) => ({
+    parentIds: key.split("|"),
+    childIds: childIds.sort((leftId, rightId) => {
+      const left = peopleMap.get(leftId);
+      const right = peopleMap.get(rightId);
+
+      if (!left || !right) {
+        return leftId.localeCompare(rightId);
+      }
+
+      if (left.birth_date && right.birth_date && left.birth_date !== right.birth_date) {
+        return left.birth_date.localeCompare(right.birth_date);
+      }
+
+      return left.primary_name.localeCompare(right.primary_name);
+    }),
+  }));
+}
+
+function keepSpousesAdjacent(
+  positions: Map<string, { x: number; y: number }>,
+  grouped: Record<string, PersonRow[]>,
+  relationships: RelationshipRow[],
+  viewerPersonId: string,
+) {
+  for (const row of Object.values(grouped)) {
+    const rowPeople = row.slice().sort((left, right) => {
+      const leftX = positions.get(left.id)?.x ?? 0;
+      const rightX = positions.get(right.id)?.x ?? 0;
+      return leftX - rightX;
+    });
+    const visited = new Set<string>();
+
+    for (const person of rowPeople) {
+      if (visited.has(person.id)) {
+        continue;
+      }
+
+      const spouse = rowPeople.find((candidate) => {
+        return (
+          candidate.id !== person.id &&
+          !visited.has(candidate.id) &&
+          directSpouseOf(relationships, person.id, candidate.id)
+        );
+      });
+
+      if (!spouse) {
+        visited.add(person.id);
+        continue;
+      }
+
+      const orderedPair = [person, spouse].sort((left, right) =>
+        comparePeopleForLayout(left, right, relationships, viewerPersonId),
+      );
+      const pairPositions = orderedPair
+        .map((entry) => positions.get(entry.id))
+        .filter((entry): entry is { x: number; y: number } => Boolean(entry));
+
+      if (pairPositions.length !== 2) {
+        visited.add(person.id);
+        visited.add(spouse.id);
+        continue;
+      }
+
+      const pairCenter =
+        pairPositions.reduce((sum, entry) => sum + entry.x + NODE_WIDTH / 2, 0) /
+        pairPositions.length;
+      const pairWidth = NODE_WIDTH * 2 + SPOUSE_GAP;
+
+      orderedPair.forEach((entry, index) => {
+        const position = positions.get(entry.id);
+
+        if (!position) {
+          return;
+        }
+
+        position.x =
+          pairCenter - pairWidth / 2 + index * (NODE_WIDTH + SPOUSE_GAP);
+      });
+
+      visited.add(person.id);
+      visited.add(spouse.id);
+    }
+  }
+}
+
+function resolveGenerationCollisions(
+  positions: Map<string, { x: number; y: number }>,
+  grouped: Record<string, PersonRow[]>,
+  relationships: RelationshipRow[],
+  viewerPersonId: string,
+) {
+  for (const row of Object.values(grouped)) {
+    const units = buildRowUnits(row, positions, relationships, viewerPersonId);
+    let nextAvailableX = LEFT_MARGIN;
+
+    for (const unit of units) {
+      const startX = Math.max(unit.anchorStartX, nextAvailableX);
+
+      unit.members.forEach(({ personId, offsetX }) => {
+        const position = positions.get(personId);
+
+        if (!position) {
+          return;
+        }
+
+        position.x = startX + offsetX;
+      });
+
+      nextAvailableX = startX + unit.width + HORIZONTAL_GAP;
+    }
+  }
+}
+
+function buildRowUnits(
+  row: PersonRow[],
+  positions: Map<string, { x: number; y: number }>,
+  relationships: RelationshipRow[],
+  viewerPersonId: string,
+) {
+  const rowPeople = row.slice().sort((left, right) => {
+    const leftX = positions.get(left.id)?.x ?? 0;
+    const rightX = positions.get(right.id)?.x ?? 0;
+
+    if (leftX !== rightX) {
+      return leftX - rightX;
+    }
+
+    return comparePeopleForLayout(left, right, relationships, viewerPersonId);
+  });
+  const units: Array<{
+    anchorStartX: number;
+    members: Array<{ personId: string; offsetX: number }>;
+    width: number;
+  }> = [];
+  const visited = new Set<string>();
+
+  for (const person of rowPeople) {
+    if (visited.has(person.id)) {
+      continue;
+    }
+
+    const spouse = rowPeople.find((candidate) => {
+      return (
+        candidate.id !== person.id &&
+        !visited.has(candidate.id) &&
+        directSpouseOf(relationships, person.id, candidate.id)
+      );
+    });
+
+    if (!spouse) {
+      units.push({
+        anchorStartX: positions.get(person.id)?.x ?? LEFT_MARGIN,
+        members: [{ personId: person.id, offsetX: 0 }],
+        width: NODE_WIDTH,
+      });
+      visited.add(person.id);
+      continue;
+    }
+
+    const orderedPair = [person, spouse].sort((left, right) =>
+      comparePeopleForLayout(left, right, relationships, viewerPersonId),
+    );
+    const pairCenter =
+      orderedPair.reduce(
+        (sum, entry) => sum + (positions.get(entry.id)?.x ?? 0) + NODE_WIDTH / 2,
+        0,
+      ) / orderedPair.length;
+    const pairWidth = NODE_WIDTH * 2 + SPOUSE_GAP;
+
+    units.push({
+      anchorStartX: pairCenter - pairWidth / 2,
+      members: orderedPair.map((entry, index) => ({
+        personId: entry.id,
+        offsetX: index * (NODE_WIDTH + SPOUSE_GAP),
+      })),
+      width: pairWidth,
+    });
+
+    visited.add(person.id);
+    visited.add(spouse.id);
+  }
+
+  return units;
 }
 
 function getParentsOf(relationships: RelationshipRow[], childPersonId: string) {
@@ -687,7 +908,15 @@ function getParentsOf(relationships: RelationshipRow[], childPersonId: string) {
 }
 
 function getGenerationKey(person: PersonRow) {
-  return String(Math.max(person.generation_index ?? 0, 0));
+  return String(person.generation_index ?? 0);
+}
+
+function getSpanWidth(count: number, gap: number) {
+  if (count <= 0) {
+    return 0;
+  }
+
+  return NODE_WIDTH * count + gap * (count - 1);
 }
 
 function formatRelativeTime(value: string) {

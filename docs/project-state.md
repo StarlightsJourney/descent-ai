@@ -122,10 +122,13 @@ Dev server is expected to run from:
 
 1. apply the RLS helper patch in the live Supabase project so authenticated reads work without the temporary recovery path
 2. verify that the web app consistently switches from demo mode to live mode after sign-in
-3. add the first real mutation flow for signed-in users
-4. add invite acceptance and membership flows
-5. replace static node positions with a proper tree layout strategy
-6. expand Chinese kinship coverage beyond the current close-family heuristics
+3. finish and verify the first real person-details mutation flow for signed-in users, including the direct-edit versus suggestion split
+4. replace the current tree nodes with fixed-size identity-first cards so cards stop growing unevenly and overlapping
+5. remove duplicated kinship wording so the same relationship label is not repeated in both structural and title slots
+6. replace the current overlap-prone placement with a proper ancestry-first layout for spouse pairs, parent-child joins, and sibling spacing
+7. introduce a derived family-unit layer so multi-partner and former-partner structures can render cleanly without forcing every branch fully open at once
+8. add invite acceptance and membership flows
+9. expand Chinese kinship coverage beyond the current close-family heuristics
 
 ## Current UX Notes
 
@@ -134,6 +137,58 @@ Dev server is expected to run from:
 - spouse connectors and parent-child joins now read better than the previous generic graph curves, but the overall layout is still static
 - selected-person details now surface description text and a lightweight personal note, but editing those fields is still not implemented
 - before major visual redesign, continue prioritizing tree meaning and mutation correctness over polish
+
+## Agreed Next UX / Layout Direction
+
+- keep a full-tree overview, but do not require every complex branch to be fully expanded at once
+- optimize for orientation first: ancestry should remain glanceable even when partner structures are complex
+- use fixed-size identity-first person cards in the tree canvas
+- tree cards should emphasize avatar, name, one kinship title, and years; descriptions and personal notes belong in the selected-person panel instead of inside nodes
+- remove repeated kinship wording such as showing the same relationship label twice in the same card or panel
+- for simple families, continue supporting a classic tree with explicit spouse pair connectors, parent-child drops, and sibling bars
+- for complex partner structures, introduce a derived family-unit abstraction rather than hard-coding one spouse pair per person
+- a family unit should represent one selected partner relationship or one single-parent child group, and children should hang from that unit rather than from a raw person node
+- multiple current or former partners should be represented as selectable partner groups, with status encoded visually through edge style or badges
+- mobile should bias toward branch-focused exploration: one active partner branch at a time, with the broader tree remaining navigable but not fully exploded
+
+## Next Execution Order
+
+1. complete and verify the first person-details mutation path end to end
+2. refactor tree nodes into fixed-size identity cards and remove duplicated kinship text
+3. replace the current overlap-prone placement with a proper spouse-parent-sibling layout for the simple case
+4. derive family units in the read model so multi-partner and former-partner cases have a stable data shape
+5. add partner-stack or partner-selection UI for complex branches, especially for mobile
+
+## Full Support Roadmap
+
+The path from the current simple tree to fuller family-structure support should proceed in these phases:
+
+1. `2A` relationship contract
+   - define how multiple current partners, former partners, adopted children, step children, and guardian roles are represented
+   - keep raw relationship edges as the source of truth, but document explicit semantics so UI code does not guess
+2. `2B` derived family-unit layer
+   - derive stable family units from raw people and relationship edges
+   - each unit should represent one partner pair plus its child group, or one single-parent child group
+3. `2C` unit-based rendering
+   - switch tree connectors from raw spouse-edge heuristics to family-unit rendering
+   - keep the simple married-biological-pair connector rule for simple cases, but make complex branches unit-aware
+4. `2D` branch-focused navigation
+   - add active partner or active family-unit selection for people with multiple branches
+   - bias mobile toward one active branch at a time instead of exploding every branch at once
+5. `2E` mutation and verification hardening
+   - add seeded scenarios, tests, and mutation flows for multi-partner, adopted, step, and former-partner cases
+
+## Expected Outcome After Family Units
+
+Once the family-unit layer is in place, the expected product and implementation improvements are:
+
+- children attach to a specific family branch rather than ambiguously to a raw person node
+- multi-wife, multi-husband, and former-partner cases become renderable without rewriting the whole graph model
+- adopted and step-child cases can be represented as explicit branch semantics instead of layout hacks
+- desktop can preserve an overview while mobile can switch between active branches
+- future mutation flows become more coherent because edits can target a family unit instead of relying on loose edge heuristics
+
+Family units are the transition point from a graph with simple heuristics to a more structured genealogy model that can scale to real family complexity.
 
 ## Supabase Setup Status
 

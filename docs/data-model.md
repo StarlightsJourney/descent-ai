@@ -235,6 +235,26 @@ The product experience assumes one private tree per family. The backend can stil
 
 This app should use a graph-style relationship model rather than hard-coded `father_id`, `mother_id`, `spouse_id` fields. Real family structures are too varied for rigid columns.
 
+### Derived family units over raw rendering heuristics
+
+The storage model should remain graph-based, but the UI should not render directly from raw spouse and parent edges forever.
+
+The expected next read-model step is a derived `family unit` layer:
+
+- one partner pair plus the child group attached to that pair
+- one former-partner pair plus any shared children
+- one single-parent child group when no partner pair is active
+
+This derived layer is important because it gives the renderer and future mutation flows a stable object to target when families include:
+
+- multiple current partners
+- former partners
+- adopted children
+- step children
+- guardian or non-biological parenting cases
+
+The backend does not need a separate persisted `family_units` table immediately. The near-term plan is to derive those units from the existing `people` and `relationships` graph first, then let UI and mutation flows consume that derived model.
+
 ### Store enough data for future relationship intelligence
 
 Even if MVP only shows a connection path, the schema should support future computation of:

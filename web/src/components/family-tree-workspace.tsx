@@ -23,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PersonDetailsForm } from "@/components/person-details-form";
 import {
   Command,
   CommandEmpty,
@@ -70,6 +71,11 @@ type DragState = {
   pointerX: number;
   pointerY: number;
 };
+
+const NODE_WIDTH = 208;
+const NODE_HEIGHT = 248;
+const TREE_CANVAS_WIDTH = 1560;
+const TREE_CANVAS_HEIGHT = 1320;
 
 export function FamilyTreeWorkspace({
   initialTree,
@@ -313,7 +319,7 @@ export function FamilyTreeWorkspace({
                       <SheetHeader>
                         <SheetTitle>{selectedPerson?.primaryName}</SheetTitle>
                         <SheetDescription>
-                          {selectedPerson?.chineseTitle} ·{" "}
+                          {selectedPerson?.chineseTitle} /{" "}
                           {selectedPerson?.englishTitle}
                         </SheetDescription>
                       </SheetHeader>
@@ -322,7 +328,6 @@ export function FamilyTreeWorkspace({
                           primaryName={selectedPerson?.primaryName ?? ""}
                           avatarLabel={selectedPerson?.avatarLabel ?? ""}
                           photoUrl={selectedPerson?.photoUrl ?? null}
-                          relationLabel={selectedPerson?.relationLabel ?? ""}
                           branch={selectedPerson?.branch ?? ""}
                           years={selectedPerson?.years ?? ""}
                           description={selectedPerson?.description ?? ""}
@@ -374,7 +379,13 @@ export function FamilyTreeWorkspace({
                   setIsDragging(false);
                 }}
               >
-                <div className="relative h-[760px] min-w-[980px] overflow-hidden">
+                <div
+                  className="relative overflow-hidden"
+                  style={{
+                    height: `${TREE_CANVAS_HEIGHT}px`,
+                    minWidth: `${TREE_CANVAS_WIDTH}px`,
+                  }}
+                >
                   <div
                     className="absolute inset-0 origin-top-left transition-transform duration-150"
                     style={{
@@ -383,7 +394,7 @@ export function FamilyTreeWorkspace({
                   >
                     <svg
                       className="absolute inset-0 h-full w-full"
-                      viewBox="0 0 980 760"
+                      viewBox={`0 0 ${TREE_CANVAS_WIDTH} ${TREE_CANVAS_HEIGHT}`}
                       fill="none"
                       aria-hidden="true"
                     >
@@ -400,7 +411,12 @@ export function FamilyTreeWorkspace({
                         />
                       ))}
                       {parentChildGroups.map((group) => {
-                        const child = nodeMap.get(group.childId);
+                        const children = group.childIds
+                          .map((childId) => nodeMap.get(childId))
+                          .filter(
+                            (child): child is NonNullable<typeof child> =>
+                              Boolean(child),
+                          );
                         const parents = group.parentIds
                           .map((parentId) => nodeMap.get(parentId))
                           .filter(
@@ -408,16 +424,14 @@ export function FamilyTreeWorkspace({
                               Boolean(parent),
                           );
 
-                        if (!child || parents.length === 0) {
+                        if (children.length === 0 || parents.length === 0) {
                           return null;
                         }
 
                         const parentCenters = parents.map((parent) => ({
-                          x: parent.x + 88,
-                          y: parent.y + 92,
+                          x: parent.x + NODE_WIDTH / 2,
+                          y: parent.y + NODE_HEIGHT,
                         }));
-                        const childCenterX = child.x + 88;
-                        const childTopY = child.y;
                         const railY = Math.max(...parentCenters.map((parent) => parent.y)) + 28;
                         const junctionX =
                           parentCenters.reduce((sum, parent) => sum + parent.x, 0) /
@@ -425,6 +439,8 @@ export function FamilyTreeWorkspace({
                         const strokeClass = edgeClass(group.style);
                         const dashPattern =
                           group.style === "indirect" ? "8 8" : undefined;
+                        const siblingRailY =
+                          Math.min(...children.map((child) => child.y)) - 28;
 
                         return (
                           <g key={group.id}>
@@ -438,17 +454,50 @@ export function FamilyTreeWorkspace({
                                 strokeLinecap="round"
                               />
                             ))}
-                            <path
-                              d={
-                                Math.abs(junctionX - childCenterX) > 2
-                                  ? `M ${junctionX} ${railY} H ${childCenterX} V ${childTopY}`
-                                  : `M ${junctionX} ${railY} V ${childTopY}`
-                              }
-                              className={strokeClass}
-                              stroke="currentColor"
-                              strokeDasharray={dashPattern}
-                              strokeLinecap="round"
-                            />
+                            {children.length === 1 ? (
+                              <path
+                                d={
+                                  Math.abs(junctionX - (children[0].x + NODE_WIDTH / 2)) > 2
+                                    ? `M ${junctionX} ${railY} H ${children[0].x + NODE_WIDTH / 2} V ${children[0].y}`
+                                    : `M ${junctionX} ${railY} V ${children[0].y}`
+                                }
+                                className={strokeClass}
+                                stroke="currentColor"
+                                strokeDasharray={dashPattern}
+                                strokeLinecap="round"
+                              />
+                            ) : (
+                              <>
+                                <path
+                                  d={`M ${junctionX} ${railY} V ${siblingRailY}`}
+                                  className={strokeClass}
+                                  stroke="currentColor"
+                                  strokeDasharray={dashPattern}
+                                  strokeLinecap="round"
+                                />
+                                <path
+                                  d={`M ${Math.min(
+                                    ...children.map((child) => child.x + NODE_WIDTH / 2),
+                                  )} ${siblingRailY} H ${Math.max(
+                                    ...children.map((child) => child.x + NODE_WIDTH / 2),
+                                  )}`}
+                                  className={strokeClass}
+                                  stroke="currentColor"
+                                  strokeDasharray={dashPattern}
+                                  strokeLinecap="round"
+                                />
+                                {children.map((child, index) => (
+                                  <path
+                                    key={`${group.id}-child-${index}`}
+                                    d={`M ${child.x + NODE_WIDTH / 2} ${siblingRailY} V ${child.y}`}
+                                    className={strokeClass}
+                                    stroke="currentColor"
+                                    strokeDasharray={dashPattern}
+                                    strokeLinecap="round"
+                                  />
+                                ))}
+                              </>
+                            )}
                           </g>
                         );
                       })}
@@ -468,23 +517,21 @@ export function FamilyTreeWorkspace({
                           className={nodeClass(person.accent, active)}
                           style={{ left: person.x, top: person.y }}
                         >
-                          <div className="flex items-start gap-3">
+                          <div className="flex h-full flex-col items-center justify-between text-center">
                             <AvatarBadge
                               avatarLabel={person.avatarLabel}
                               photoUrl={person.photoUrl}
+                              dominant
                             />
-                            <div className="min-w-0 flex-1">
-                              <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                                {person.relationLabel}
-                              </span>
-                              <span className="mt-1 block text-base font-semibold">
+                            <div className="flex min-w-0 flex-1 flex-col items-center justify-end pt-4">
+                              <span className="block max-w-full text-base font-semibold leading-5">
                                 {person.primaryName}
                               </span>
-                              <span className="mt-1 block text-sm text-slate-600">
+                              <span className="mt-2 block max-w-full text-sm leading-5 text-slate-600">
                                 {person.chineseTitle} / {person.englishTitle}
                               </span>
-                              <span className="mt-3 block text-xs text-slate-500">
-                                {person.branch} - {person.years}
+                              <span className="mt-3 block text-xs font-medium tracking-[0.04em] text-slate-500">
+                                {person.years}
                               </span>
                             </div>
                           </div>
@@ -596,11 +643,14 @@ export function FamilyTreeWorkspace({
                       <CardTitle className="mt-1 text-2xl">
                         {selectedPerson?.primaryName}
                       </CardTitle>
-                    <p className="mt-2 text-sm text-slate-600">
-                      {selectedPerson?.chineseTitle} ·{" "}
-                      {selectedPerson?.englishTitle}
-                    </p>
-                  </div>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {selectedPerson?.chineseTitle} /{" "}
+                        {selectedPerson?.englishTitle}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {selectedPerson?.years}
+                      </p>
+                    </div>
                   </div>
                   <Button variant={directEdit ? "default" : "secondary"} size="sm">
                     {directEdit ? "Edit" : "Suggest"}
@@ -610,7 +660,6 @@ export function FamilyTreeWorkspace({
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    ["Kinship", selectedPerson?.relationLabel ?? ""],
                     ["Branch", selectedPerson?.branch ?? ""],
                     ["Years", selectedPerson?.years ?? ""],
                     ["Viewer role", tree.viewerRole],
@@ -634,24 +683,29 @@ export function FamilyTreeWorkspace({
                 </div>
 
                 <div className="space-y-3">
-                  <div>
+                  <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-slate-950">
-                      Description
+                      Details
                     </h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      {selectedPerson?.description}
-                    </p>
+                    <Badge variant="secondary" className="rounded-md">
+                      {directEdit ? "Direct edit" : "Suggestion flow"}
+                    </Badge>
                   </div>
-                  <Card className="border-slate-200/80 bg-slate-50/80 shadow-none">
-                    <CardContent className="px-4 py-4">
-                      <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">
-                        Personal note
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-700">
-                        {selectedPerson?.personalNote}
-                      </p>
-                    </CardContent>
-                  </Card>
+                  {selectedPerson ? (
+                    <Card className="border-slate-200/80 bg-slate-50/80 shadow-none">
+                      <CardContent className="px-4 py-4">
+                        <PersonDetailsForm
+                          key={selectedPerson.id}
+                          familyTreeId={tree.id}
+                          personId={selectedPerson.id}
+                          primaryName={selectedPerson.primaryName}
+                          bio={selectedPerson.description}
+                          currentPlace={selectedPerson.personalNote}
+                          viewerRole={tree.viewerRole}
+                        />
+                      </CardContent>
+                    </Card>
+                  ) : null}
                 </div>
 
                 <div className="space-y-3">
@@ -660,7 +714,7 @@ export function FamilyTreeWorkspace({
                       Path to you
                     </h3>
                     <Badge variant="secondary" className="rounded-md">
-                      Chinese v1
+                      English titles
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -670,7 +724,7 @@ export function FamilyTreeWorkspace({
                           {step}
                         </span>
                         {index < pathLabels.length - 1 ? (
-                          <span className="text-slate-400">→</span>
+                          <span className="text-slate-400">-&gt;</span>
                         ) : null}
                       </div>
                     ))}
@@ -751,28 +805,28 @@ function edgeClass(style: RelationshipStyle) {
 
 function nodeClass(accent: PersonAccent, active: boolean) {
   const base =
-    "absolute w-44 rounded-xl border px-4 py-3 text-left shadow-[0_16px_40px_rgba(15,23,42,0.16)] backdrop-blur transition";
+    "absolute flex h-[248px] w-[208px] flex-col items-center justify-center overflow-hidden rounded-[28px] border px-4 py-4 text-center shadow-[0_18px_48px_rgba(15,23,42,0.16)] backdrop-blur transition duration-150";
 
   if (accent === "marriage") {
     return `${base} ${
       active
-        ? "border-amber-300 bg-amber-50 text-amber-950"
-        : "border-amber-200 bg-white/92 text-slate-900"
+        ? "border-amber-300 bg-amber-50 text-amber-950 shadow-[0_22px_56px_rgba(245,158,11,0.2)]"
+        : "border-amber-200 bg-white/94 text-slate-900 hover:-translate-y-0.5 hover:shadow-[0_22px_56px_rgba(15,23,42,0.18)]"
     }`;
   }
 
   if (accent === "step") {
     return `${base} ${
       active
-        ? "border-sky-300 bg-sky-50 text-sky-950"
-        : "border-sky-200 bg-white/90 text-slate-900"
+        ? "border-sky-300 bg-sky-50 text-sky-950 shadow-[0_22px_56px_rgba(14,165,233,0.2)]"
+        : "border-sky-200 bg-white/94 text-slate-900 hover:-translate-y-0.5 hover:shadow-[0_22px_56px_rgba(15,23,42,0.18)]"
     }`;
   }
 
   return `${base} ${
     active
-      ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-      : "border-emerald-200 bg-white/92 text-slate-900"
+      ? "border-emerald-300 bg-emerald-50 text-emerald-950 shadow-[0_22px_56px_rgba(16,185,129,0.2)]"
+      : "border-emerald-200 bg-white/94 text-slate-900 hover:-translate-y-0.5 hover:shadow-[0_22px_56px_rgba(15,23,42,0.18)]"
   }`;
 }
 
@@ -780,26 +834,35 @@ function AvatarBadge({
   avatarLabel,
   photoUrl,
   large = false,
+  dominant = false,
 }: {
   avatarLabel: string;
   photoUrl: string | null;
   large?: boolean;
+  dominant?: boolean;
 }) {
-  const sizeClass = large ? "size-16 rounded-2xl text-lg" : "size-12 rounded-xl text-sm";
+  const sizeClass = dominant
+    ? "size-28 rounded-[24px] text-2xl"
+    : large
+      ? "size-16 rounded-2xl text-lg"
+      : "size-14 rounded-2xl text-sm";
+  const frameClass = dominant
+    ? "shadow-[0_14px_30px_rgba(15,23,42,0.12)] ring-4 ring-white"
+    : "ring-1 ring-slate-200";
 
   if (photoUrl) {
     return (
       <img
         src={photoUrl}
         alt=""
-        className={`${sizeClass} shrink-0 object-cover ring-1 ring-slate-200`}
+        className={`${sizeClass} shrink-0 object-cover ${frameClass}`}
       />
     );
   }
 
   return (
     <span
-      className={`${sizeClass} inline-flex shrink-0 items-center justify-center bg-slate-100 font-semibold text-slate-700 ring-1 ring-slate-200`}
+      className={`${sizeClass} inline-flex shrink-0 items-center justify-center bg-[linear-gradient(180deg,#f8fafc_0%,#e2e8f0_100%)] font-semibold text-slate-700 ${frameClass}`}
       aria-hidden="true"
     >
       {avatarLabel}
@@ -823,9 +886,9 @@ function buildSpouseEdges(tree: FamilyTreeSnapshot, nodeMap: ReturnType<typeof g
 
       return {
         id: relationship.id,
-        x1: left.x + 176,
+        x1: left.x + NODE_WIDTH,
         x2: right.x,
-        y: left.y + 46,
+        y: left.y + NODE_HEIGHT / 2,
       };
     })
     .filter(
@@ -839,36 +902,73 @@ function buildParentChildGroups(tree: FamilyTreeSnapshot) {
     string,
     {
       id: string;
-      childId: string;
+      childIds: string[];
       parentIds: string[];
       style: RelationshipStyle;
     }
   >();
+
+  const childRelationships = new Map<string, FamilyTreeSnapshot["relationships"]>();
 
   for (const relationship of tree.relationships) {
     if (!isParentChildRelationship(relationship.type)) {
       continue;
     }
 
-    const existing = grouped.get(relationship.toPersonId);
+    const existing = childRelationships.get(relationship.toPersonId) ?? [];
+    existing.push(relationship);
+    childRelationships.set(relationship.toPersonId, existing);
+  }
 
-    if (existing) {
-      existing.parentIds.push(relationship.fromPersonId);
-      if (relationship.style === "indirect") {
-        existing.style = "indirect";
+  for (const [childId, relationships] of childRelationships.entries()) {
+    const biologicalParents = relationships
+      .filter((relationship) => relationship.type === "biological_parent")
+      .map((relationship) => relationship.fromPersonId)
+      .sort();
+
+    if (
+      biologicalParents.length === 2 &&
+      tree.relationships.some((relationship) => {
+        return (
+          relationship.type === "spouse" &&
+          ((relationship.fromPersonId === biologicalParents[0] &&
+            relationship.toPersonId === biologicalParents[1]) ||
+            (relationship.fromPersonId === biologicalParents[1] &&
+              relationship.toPersonId === biologicalParents[0]))
+        );
+      })
+    ) {
+      const key = `family:${biologicalParents.join("|")}`;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.childIds.push(childId);
+      } else {
+        grouped.set(key, {
+          id: key,
+          childIds: [childId],
+          parentIds: biologicalParents,
+          style: "blood",
+        });
       }
+
       continue;
     }
 
-    grouped.set(relationship.toPersonId, {
-      id: relationship.id,
-      childId: relationship.toPersonId,
-      parentIds: [relationship.fromPersonId],
-      style: relationship.style,
+    grouped.set(`child:${childId}`, {
+      id: `child:${childId}`,
+      childIds: [childId],
+      parentIds: relationships.map((relationship) => relationship.fromPersonId),
+      style: relationships.some((relationship) => relationship.style === "indirect")
+        ? "indirect"
+        : "blood",
     });
   }
 
-  return Array.from(grouped.values());
+  return Array.from(grouped.values()).map((group) => ({
+    ...group,
+    childIds: group.childIds.sort(),
+  }));
 }
 
 function isParentChildRelationship(type: RelationshipType) {
@@ -903,7 +1003,6 @@ function MobileDetails({
   primaryName,
   avatarLabel,
   photoUrl,
-  relationLabel,
   branch,
   years,
   description,
@@ -917,7 +1016,6 @@ function MobileDetails({
   primaryName: string;
   avatarLabel: string;
   photoUrl: string | null;
-  relationLabel: string;
   branch: string;
   years: string;
   description: string;
@@ -933,19 +1031,16 @@ function MobileDetails({
       <div className="flex items-start gap-4">
         <AvatarBadge avatarLabel={avatarLabel} photoUrl={photoUrl} large />
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-            {relationLabel}
-          </p>
           <p className="mt-1 text-lg font-semibold text-slate-950">{primaryName}</p>
           <p className="mt-1 text-sm text-slate-600">
             {chineseTitle} / {englishTitle}
           </p>
+          <p className="mt-1 text-sm text-slate-500">{years}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         {[
-          ["Kinship", relationLabel],
           ["Branch", branch],
           ["Years", years],
           ["Viewer role", viewerRole],
@@ -990,7 +1085,7 @@ function MobileDetails({
                 {step}
               </span>
               {index < pathLabels.length - 1 ? (
-                <span className="text-slate-400">→</span>
+                <span className="text-slate-400">-&gt;</span>
               ) : null}
             </div>
           ))}
