@@ -169,3 +169,21 @@ Not part of MVP, but aligned with the vision:
 - Whether guest links can be restricted to certain branches or people later
 - How broad the first Chinese kinship title coverage must be beyond the most common cases
 - Whether mobile version one reaches full editing or lands on light editing first
+
+## Implementation Snapshot
+
+Current frontend work already reflects these product choices:
+
+- one private tree workspace
+- guest-readable but account-controlled editing model
+- contributor suggestion flow
+- Chinese title visibility beside relationship paths
+- AI as a confirmation-first assistant rather than autonomous editor
+- Supabase as the chosen MVP backend platform for auth, storage, and realtime
+
+The current app is still using mock data, but the frontend interaction model is already in place for:
+
+- selecting a person
+- searching and focusing people
+- zooming and panning the tree workspace
+- viewing title, path, review, and activity surfaces

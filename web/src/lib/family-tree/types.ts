@@ -18,8 +18,13 @@ export type Person = {
   primaryName: string;
   chineseTitle: string;
   englishTitle: string;
+  relationLabel: string;
   branch: string;
   years: string;
+  photoUrl: string | null;
+  avatarLabel: string;
+  description: string;
+  personalNote: string;
   x: number;
   y: number;
   accent: PersonAccent;

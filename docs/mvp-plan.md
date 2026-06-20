@@ -82,6 +82,13 @@ Target full mobile editing if feasible, but if time becomes tight, reduce mobile
 - Implement auth and private tree membership
 - Create seed data structure for tree rendering
 
+Current status:
+
+- repo and app architecture are in place
+- seed tree structure exists in typed frontend mock data
+- backend platform is chosen: Supabase
+- auth and membership are not yet implemented
+
 ### Week 2: Core Tree Experience
 
 - Build interactive tree rendering
@@ -129,3 +136,22 @@ The MVP is ready when:
 5. version history and rollback
 6. more advanced privacy controls
 7. linked or multi-tree support if the product direction requires it
+
+## Current Build Snapshot
+
+Completed in the current web shell:
+
+- product-oriented app layout
+- component system using shadcn/ui
+- typed tree snapshot model
+- interactive client-side selection
+- search-driven person selection
+- zoom, fit, center, and pan state
+
+Still pending before MVP becomes real:
+
+- persistence layer
+- auth and invite flow
+- realtime sync
+- approvals workflow
+- editable relationship mutations

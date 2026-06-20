@@ -10,6 +10,11 @@ This document defines the initial entities needed for the private collaborative 
 
 Represents an authenticated person using the app.
 
+Implementation note:
+
+- authentication identity should come from `auth.users` in Supabase
+- app-facing profile data should live in a `public.profiles` table keyed to `auth.users.id`
+
 Suggested fields:
 
 - `id`
@@ -43,10 +48,16 @@ Suggested fields:
 - `id`
 - `family_tree_id`
 - `user_id`
+- `person_id`
 - `role` (`contributor`, `editor`, `admin`)
 - `status` (`active`, `invited`, `disabled`)
 - `created_at`
 - `updated_at`
+
+Notes:
+
+- `person_id` should be nullable because some members may help administer a tree before their own person node is linked
+- the user-to-person mapping should be tree-scoped, not global, because the same user could theoretically appear in different trees later
 
 ### Invite
 
@@ -281,3 +292,28 @@ Because family edits are sensitive, change history should be stored from the sta
 - `GET /trees/:id/suggestions`
 - `POST /suggestions`
 - `PATCH /suggestions/:id`
+
+## Implementation Notes
+
+The current frontend already assumes this model shape conceptually, even though data is still mocked. In practice, the next backend pass should expose a tree read model that can hydrate:
+
+- current viewer identity
+- selected person details
+- people and relationship graph data
+- suggestions
+- activity feed
+- stats
+
+The next technical decision is not the entity model itself. That is mostly established. The next decision is which backend stack will implement this model for MVP, especially for:
+
+- auth
+- relational persistence
+- realtime updates
+- file storage
+
+That decision is now made:
+
+- Supabase Auth
+- Supabase Postgres
+- Supabase Realtime
+- Supabase Storage

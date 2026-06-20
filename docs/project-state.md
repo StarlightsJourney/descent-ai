@@ -14,6 +14,7 @@ Primary product goals:
 - preserve lineage and family structure over time
 - support collaborative editing with controlled permissions
 - surface Chinese kinship titles alongside structural relationship paths
+- help users remember infrequently-seen relatives through photos and personal notes
 
 ## Confirmed Product Decisions
 
@@ -23,6 +24,9 @@ Primary product goals:
 - editors and admins can directly edit
 - Chinese kinship logic is required in version one
 - AI should suggest changes and require user confirmation before mutating the graph
+- each person node should show a photo when available, or a placeholder/avatar when not
+- the selected-person panel should eventually include photo, description, and a small personal note field
+- tree readability and ancestry clarity matter more than visual polish at this stage
 
 ## Current Repository State
 
@@ -41,6 +45,8 @@ Recent commits:
 - [Product Brief](product-brief.md)
 - [MVP Plan](mvp-plan.md)
 - [Data Model](data-model.md)
+- [Backend Stack Decision](backend-stack.md)
+- [Supabase Setup](supabase-setup.md)
 
 This file should be updated whenever product direction, implementation status, or near-term priorities change in a meaningful way.
 
@@ -57,12 +63,17 @@ Current implementation includes:
 
 - product shell for the family tree workspace
 - typed family tree snapshot model
-- mock people and relationships data
+- sign-in page and sign-out action scaffold
+- session-aware live-versus-demo status banner
+- local `web/.env.local` filled with working Supabase values
 - selector utilities for selected person, edit route, and relationship path
 - client-side tree state for selection, search, zoom, fit, and pan
 - graph-style visual layout with static node positioning
 - selected-person details panel
-- Chinese title and English explanation display
+- basic live relationship-derived Chinese and English labels for close seeded relatives
+- avatar or placeholder presentation for person nodes and selected-person details
+- selected-person description and lightweight personal note display
+- ancestry-first spouse and parent-child connector rendering for the current tree canvas
 - review/activity/legend panels
 - AI command surface mock
 
@@ -74,21 +85,27 @@ Current implementation includes:
 - product docs
 - UI component system
 - app shell
+- Supabase auth sign-in and sign-out flow
 - typed frontend data structures
-- path computation from mock graph relationships
+- path computation from live or mock graph relationships
 - interactive client-side tree state
+- live Supabase tree loader with demo fallback
+- hosted Supabase project configured locally
+- seed data verified in the hosted Supabase project
+- RLS helper fix prepared for existing and fresh Supabase projects
 
 ### Mocked
 
-- backend persistence
-- authentication
+- backend mutation flows
 - invites
-- real-time sync
+- full auth onboarding and account creation UI
+- real-time subscriptions
 - approvals workflow
 - AI parsing
 - editable graph interactions
-- exact Chinese kinship engine
+- exact Chinese kinship engine beyond the current simple relationship heuristics
 - production tree layout logic
+- person description and personal-note editing flows
 
 ## Current Verification Status
 
@@ -103,11 +120,56 @@ Dev server is expected to run from:
 
 ## Immediate Next Priorities
 
-1. replace demo snapshot data with a real app state layer
-2. define backend contract for people, relationships, suggestions, and title overrides
-3. decide data source strategy for auth, storage, and realtime
-4. replace static node positions with a proper tree layout strategy
-5. improve the visual system further only after state and data flow are real
+1. apply the RLS helper patch in the live Supabase project so authenticated reads work without the temporary recovery path
+2. verify that the web app consistently switches from demo mode to live mode after sign-in
+3. add the first real mutation flow for signed-in users
+4. add invite acceptance and membership flows
+5. replace static node positions with a proper tree layout strategy
+6. expand Chinese kinship coverage beyond the current close-family heuristics
+
+## Current UX Notes
+
+- person nodes now show a photo when available or an avatar placeholder when not
+- seeded viewer, spouse, sibling, and child semantics have been realigned so ancestry reads more clearly in both demo and live seed data
+- spouse connectors and parent-child joins now read better than the previous generic graph curves, but the overall layout is still static
+- selected-person details now surface description text and a lightweight personal note, but editing those fields is still not implemented
+- before major visual redesign, continue prioritizing tree meaning and mutation correctness over polish
+
+## Supabase Setup Status
+
+The repo now includes:
+
+- the initial schema migration in `web/supabase/migrations/`
+- a first seed script in `web/supabase/seed/`
+- setup guidance in `docs/supabase-setup.md`
+- `web/.env.local` created locally in the correct location
+
+Current user-facing checkpoint:
+
+- Supabase project exists
+- auth user exists in Supabase
+- `web/.env.local` contains the real project values locally
+- seed data exists for the current default tree slug
+- live sign-in works
+- the original migration bug that referenced `public.memberships` too early is fixed
+- a second migration now exists to repair the RLS helper recursion issue on already-created projects
+- the immediate next user action is to run that RLS helper repair SQL in Supabase
+
+## Backend Decision Status
+
+Backend stack is now finalized.
+
+Chosen direction:
+
+- Supabase Auth for identity and session handling
+- Supabase Postgres for relational family data
+- Supabase Realtime for live updates
+- Supabase Storage for profile photos and later media
+- application-layer TypeScript for relationship logic and Chinese kinship logic
+
+Reference:
+
+- [Backend Stack Decision](backend-stack.md)
 
 ## Working Rules
 

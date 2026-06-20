@@ -58,6 +58,7 @@ import {
 import type {
   FamilyTreeSnapshot,
   PersonAccent,
+  RelationshipType,
   RelationshipStyle,
 } from "@/lib/family-tree/types";
 
@@ -91,6 +92,8 @@ export function FamilyTreeWorkspace({
   } = useFamilyTreeState(initialTree);
   const directEdit = canDirectEdit(tree.viewerRole);
   const nodeMap = useMemo(() => getNodeMap(tree), [tree]);
+  const spouseEdges = useMemo(() => buildSpouseEdges(tree, nodeMap), [tree, nodeMap]);
+  const parentChildGroups = useMemo(() => buildParentChildGroups(tree), [tree]);
   const dragStateRef = useRef<DragState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -316,8 +319,14 @@ export function FamilyTreeWorkspace({
                       </SheetHeader>
                       <div className="px-4 pb-4">
                         <MobileDetails
+                          primaryName={selectedPerson?.primaryName ?? ""}
+                          avatarLabel={selectedPerson?.avatarLabel ?? ""}
+                          photoUrl={selectedPerson?.photoUrl ?? null}
+                          relationLabel={selectedPerson?.relationLabel ?? ""}
                           branch={selectedPerson?.branch ?? ""}
                           years={selectedPerson?.years ?? ""}
+                          description={selectedPerson?.description ?? ""}
+                          personalNote={selectedPerson?.personalNote ?? ""}
                           viewerRole={tree.viewerRole}
                           editRoute={getViewerEditRoute(tree.viewerRole)}
                           pathLabels={pathLabels}
@@ -378,33 +387,69 @@ export function FamilyTreeWorkspace({
                       fill="none"
                       aria-hidden="true"
                     >
-                      {tree.relationships.map((relationship) => {
-                        const from = nodeMap.get(relationship.fromPersonId);
-                        const to = nodeMap.get(relationship.toPersonId);
+                      {spouseEdges.map((edge) => (
+                        <line
+                          key={edge.id}
+                          x1={edge.x1}
+                          y1={edge.y}
+                          x2={edge.x2}
+                          y2={edge.y}
+                          className={edgeClass("marriage")}
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                        />
+                      ))}
+                      {parentChildGroups.map((group) => {
+                        const child = nodeMap.get(group.childId);
+                        const parents = group.parentIds
+                          .map((parentId) => nodeMap.get(parentId))
+                          .filter(
+                            (parent): parent is NonNullable<typeof parent> =>
+                              Boolean(parent),
+                          );
 
-                        if (!from || !to) {
+                        if (!child || parents.length === 0) {
                           return null;
                         }
 
-                        const x1 = from.x + 88;
-                        const y1 = from.y + 64;
-                        const x2 = to.x + 88;
-                        const y2 = to.y;
-                        const midY = y1 + (y2 - y1) / 2;
+                        const parentCenters = parents.map((parent) => ({
+                          x: parent.x + 88,
+                          y: parent.y + 92,
+                        }));
+                        const childCenterX = child.x + 88;
+                        const childTopY = child.y;
+                        const railY = Math.max(...parentCenters.map((parent) => parent.y)) + 28;
+                        const junctionX =
+                          parentCenters.reduce((sum, parent) => sum + parent.x, 0) /
+                          parentCenters.length;
+                        const strokeClass = edgeClass(group.style);
+                        const dashPattern =
+                          group.style === "indirect" ? "8 8" : undefined;
 
                         return (
-                          <path
-                            key={relationship.id}
-                            d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
-                            className={edgeClass(relationship.style)}
-                            stroke="currentColor"
-                            strokeDasharray={
-                              relationship.style === "indirect"
-                                ? "8 8"
-                                : undefined
-                            }
-                            strokeLinecap="round"
-                          />
+                          <g key={group.id}>
+                            {parentCenters.map((parent, index) => (
+                              <path
+                                key={`${group.id}-parent-${index}`}
+                                d={`M ${parent.x} ${parent.y} V ${railY} H ${junctionX}`}
+                                className={strokeClass}
+                                stroke="currentColor"
+                                strokeDasharray={dashPattern}
+                                strokeLinecap="round"
+                              />
+                            ))}
+                            <path
+                              d={
+                                Math.abs(junctionX - childCenterX) > 2
+                                  ? `M ${junctionX} ${railY} H ${childCenterX} V ${childTopY}`
+                                  : `M ${junctionX} ${railY} V ${childTopY}`
+                              }
+                              className={strokeClass}
+                              stroke="currentColor"
+                              strokeDasharray={dashPattern}
+                              strokeLinecap="round"
+                            />
+                          </g>
                         );
                       })}
                     </svg>
@@ -423,18 +468,26 @@ export function FamilyTreeWorkspace({
                           className={nodeClass(person.accent, active)}
                           style={{ left: person.x, top: person.y }}
                         >
-                          <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                            {person.branch}
-                          </span>
-                          <span className="mt-2 block text-base font-semibold">
-                            {person.primaryName}
-                          </span>
-                          <span className="mt-1 block text-sm text-slate-600">
-                            {person.chineseTitle}
-                          </span>
-                          <span className="mt-3 block text-xs text-slate-500">
-                            {person.years}
-                          </span>
+                          <div className="flex items-start gap-3">
+                            <AvatarBadge
+                              avatarLabel={person.avatarLabel}
+                              photoUrl={person.photoUrl}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                {person.relationLabel}
+                              </span>
+                              <span className="mt-1 block text-base font-semibold">
+                                {person.primaryName}
+                              </span>
+                              <span className="mt-1 block text-sm text-slate-600">
+                                {person.chineseTitle} / {person.englishTitle}
+                              </span>
+                              <span className="mt-3 block text-xs text-slate-500">
+                                {person.branch} - {person.years}
+                              </span>
+                            </div>
+                          </div>
                         </button>
                       );
                     })}
@@ -532,15 +585,22 @@ export function FamilyTreeWorkspace({
             <Card className="border-white/70 bg-white/90 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
               <CardHeader>
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardDescription>Selected person</CardDescription>
-                    <CardTitle className="mt-1 text-2xl">
-                      {selectedPerson?.primaryName}
-                    </CardTitle>
+                  <div className="flex items-start gap-4">
+                    <AvatarBadge
+                      avatarLabel={selectedPerson?.avatarLabel ?? ""}
+                      photoUrl={selectedPerson?.photoUrl ?? null}
+                      large
+                    />
+                    <div>
+                      <CardDescription>Selected person</CardDescription>
+                      <CardTitle className="mt-1 text-2xl">
+                        {selectedPerson?.primaryName}
+                      </CardTitle>
                     <p className="mt-2 text-sm text-slate-600">
                       {selectedPerson?.chineseTitle} ·{" "}
                       {selectedPerson?.englishTitle}
                     </p>
+                  </div>
                   </div>
                   <Button variant={directEdit ? "default" : "secondary"} size="sm">
                     {directEdit ? "Edit" : "Suggest"}
@@ -550,6 +610,7 @@ export function FamilyTreeWorkspace({
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 gap-3">
                   {[
+                    ["Kinship", selectedPerson?.relationLabel ?? ""],
                     ["Branch", selectedPerson?.branch ?? ""],
                     ["Years", selectedPerson?.years ?? ""],
                     ["Viewer role", tree.viewerRole],
@@ -570,6 +631,27 @@ export function FamilyTreeWorkspace({
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-950">
+                      Description
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {selectedPerson?.description}
+                    </p>
+                  </div>
+                  <Card className="border-slate-200/80 bg-slate-50/80 shadow-none">
+                    <CardContent className="px-4 py-4">
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">
+                        Personal note
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {selectedPerson?.personalNote}
+                      </p>
+                    </CardContent>
+                  </Card>
                 </div>
 
                 <div className="space-y-3">
@@ -669,7 +751,7 @@ function edgeClass(style: RelationshipStyle) {
 
 function nodeClass(accent: PersonAccent, active: boolean) {
   const base =
-    "absolute w-44 rounded-lg border px-4 py-3 text-left shadow-[0_16px_40px_rgba(15,23,42,0.16)] backdrop-blur transition";
+    "absolute w-44 rounded-xl border px-4 py-3 text-left shadow-[0_16px_40px_rgba(15,23,42,0.16)] backdrop-blur transition";
 
   if (accent === "marriage") {
     return `${base} ${
@@ -694,6 +776,110 @@ function nodeClass(accent: PersonAccent, active: boolean) {
   }`;
 }
 
+function AvatarBadge({
+  avatarLabel,
+  photoUrl,
+  large = false,
+}: {
+  avatarLabel: string;
+  photoUrl: string | null;
+  large?: boolean;
+}) {
+  const sizeClass = large ? "size-16 rounded-2xl text-lg" : "size-12 rounded-xl text-sm";
+
+  if (photoUrl) {
+    return (
+      <img
+        src={photoUrl}
+        alt=""
+        className={`${sizeClass} shrink-0 object-cover ring-1 ring-slate-200`}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`${sizeClass} inline-flex shrink-0 items-center justify-center bg-slate-100 font-semibold text-slate-700 ring-1 ring-slate-200`}
+      aria-hidden="true"
+    >
+      {avatarLabel}
+    </span>
+  );
+}
+
+function buildSpouseEdges(tree: FamilyTreeSnapshot, nodeMap: ReturnType<typeof getNodeMap>) {
+  return tree.relationships
+    .filter((relationship) => relationship.type === "spouse")
+    .map((relationship) => {
+      const from = nodeMap.get(relationship.fromPersonId);
+      const to = nodeMap.get(relationship.toPersonId);
+
+      if (!from || !to) {
+        return null;
+      }
+
+      const left = from.x <= to.x ? from : to;
+      const right = from.x <= to.x ? to : from;
+
+      return {
+        id: relationship.id,
+        x1: left.x + 176,
+        x2: right.x,
+        y: left.y + 46,
+      };
+    })
+    .filter(
+      (edge): edge is { id: string; x1: number; x2: number; y: number } =>
+        Boolean(edge),
+    );
+}
+
+function buildParentChildGroups(tree: FamilyTreeSnapshot) {
+  const grouped = new Map<
+    string,
+    {
+      id: string;
+      childId: string;
+      parentIds: string[];
+      style: RelationshipStyle;
+    }
+  >();
+
+  for (const relationship of tree.relationships) {
+    if (!isParentChildRelationship(relationship.type)) {
+      continue;
+    }
+
+    const existing = grouped.get(relationship.toPersonId);
+
+    if (existing) {
+      existing.parentIds.push(relationship.fromPersonId);
+      if (relationship.style === "indirect") {
+        existing.style = "indirect";
+      }
+      continue;
+    }
+
+    grouped.set(relationship.toPersonId, {
+      id: relationship.id,
+      childId: relationship.toPersonId,
+      parentIds: [relationship.fromPersonId],
+      style: relationship.style,
+    });
+  }
+
+  return Array.from(grouped.values());
+}
+
+function isParentChildRelationship(type: RelationshipType) {
+  return (
+    type === "biological_parent" ||
+    type === "adoptive_parent" ||
+    type === "step_parent" ||
+    type === "guardian"
+  );
+}
+
 function LegendRow({
   label,
   tone,
@@ -714,16 +900,28 @@ function LegendRow({
 }
 
 function MobileDetails({
+  primaryName,
+  avatarLabel,
+  photoUrl,
+  relationLabel,
   branch,
   years,
+  description,
+  personalNote,
   viewerRole,
   editRoute,
   pathLabels,
   chineseTitle,
   englishTitle,
 }: {
+  primaryName: string;
+  avatarLabel: string;
+  photoUrl: string | null;
+  relationLabel: string;
   branch: string;
   years: string;
+  description: string;
+  personalNote: string;
   viewerRole: string;
   editRoute: string;
   pathLabels: string[];
@@ -732,8 +930,22 @@ function MobileDetails({
 }) {
   return (
     <div className="space-y-6">
+      <div className="flex items-start gap-4">
+        <AvatarBadge avatarLabel={avatarLabel} photoUrl={photoUrl} large />
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            {relationLabel}
+          </p>
+          <p className="mt-1 text-lg font-semibold text-slate-950">{primaryName}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {chineseTitle} / {englishTitle}
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         {[
+          ["Kinship", relationLabel],
           ["Branch", branch],
           ["Years", years],
           ["Viewer role", viewerRole],
@@ -752,6 +964,21 @@ function MobileDetails({
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-950">Description</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+        </div>
+        <Card className="border-slate-200/80 bg-slate-50/80 shadow-none">
+          <CardContent className="px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.08em] text-slate-500">
+              Personal note
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-700">{personalNote}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="space-y-3">

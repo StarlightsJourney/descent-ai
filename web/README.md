@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Descent Web
+
+This app is the current web shell for Descent, a private collaborative family tree.
+
+## Backend Foundation
+
+The backend decision for MVP is Supabase:
+
+- Supabase Auth
+- Supabase Postgres
+- Supabase Realtime
+- Supabase Storage
+
+The initial foundation in this app includes:
+
+- SSR-safe Supabase browser and server clients
+- Next.js `proxy.ts` session refresh hook
+- typed database surface in `src/lib/database.types.ts`
+- initial SQL schema in `supabase/migrations/20260619_initial_schema.sql`
+- first seed script in `supabase/seed/initial-demo-tree.sql`
+- a tree loader boundary that now reads from Supabase when auth and seeded data exist, with demo fallback otherwise
+- a sign-in page, sign-out action, and session-aware live-versus-demo status banner
 
 ## Getting Started
 
-First, run the development server:
+First, install dependencies and run the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.example` to `.env.local` and set:
 
-## Learn More
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
+DEFAULT_TREE_SLUG=
+```
 
-To learn more about Next.js, take a look at the following resources:
+Without Supabase env configured, or when the signed-in user has no active seeded membership, the app falls back to the demo tree snapshot.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Next Steps
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Apply the SQL migration to a Supabase project.
+2. Create one auth user, then run `supabase/seed/initial-demo-tree.sql` with your email and slug values.
+3. Add invite acceptance and mutation flows.
+4. Replace placeholder title/path presentation with the real kinship engine.
