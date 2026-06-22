@@ -13,6 +13,10 @@ export type RelationshipType =
 
 export type RelationshipStatus = "active" | "divorced" | "separated" | "inactive";
 
+export type FamilyUnitKind = "partner" | "single_parent" | "co_parenting";
+
+export type FamilyUnitStatus = "active" | "former" | "inactive";
+
 export type Person = {
   id: string;
   primaryName: string;
@@ -37,6 +41,30 @@ export type Relationship = {
   type: RelationshipType;
   status: RelationshipStatus;
   style: RelationshipStyle;
+};
+
+export type FamilyUnitParentLink = {
+  relationshipId: string;
+  parentId: string;
+  type: Exclude<RelationshipType, "spouse">;
+  status: RelationshipStatus;
+  isPrimary: boolean;
+};
+
+export type FamilyUnitChild = {
+  childId: string;
+  role: "biological" | "adopted" | "guardian" | "step" | "mixed";
+  parentLinks: FamilyUnitParentLink[];
+  outsidePrimaryParentIds: string[];
+};
+
+export type FamilyUnit = {
+  id: string;
+  kind: FamilyUnitKind;
+  status: FamilyUnitStatus;
+  partnerRelationshipId: string | null;
+  parentIds: string[];
+  children: FamilyUnitChild[];
 };
 
 export type Suggestion = {
@@ -67,6 +95,7 @@ export type FamilyTreeSnapshot = {
   viewerRole: ViewerRole;
   people: Person[];
   relationships: Relationship[];
+  familyUnits: FamilyUnit[];
   suggestions: Suggestion[];
   activity: ActivityEntry[];
   stats: TreeStats;

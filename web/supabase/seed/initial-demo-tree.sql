@@ -1,18 +1,16 @@
 do $$
 declare
-  target_email text := 'replace-me@example.com';
-  target_slug text := 'lim-tan-family';
-  target_tree_name text := 'Lim Tan Family';
-  target_tree_description text := 'Seeded family tree for the first Supabase-backed Descent workspace.';
+  target_email text := 'madridlim03@gmail.com';
+  target_slug text := 'madrid-family';
+  target_tree_name text := 'Madrid Lim Family';
+  target_tree_description text := 'Family tree for the first Descent workspace.';
   target_user_id uuid;
   target_tree_id uuid;
   viewer_person_id uuid;
   spouse_person_id uuid;
   sibling_person_id uuid;
-  father_person_id uuid;
-  mother_person_id uuid;
+  uncle_person_id uuid;
   grandparent_person_id uuid;
-  child_person_id uuid;
 begin
   select id
   into target_user_id
@@ -62,7 +60,6 @@ begin
     birth_date,
     is_living,
     generation_index,
-    bio,
     created_by_user_id
   )
   select
@@ -72,18 +69,15 @@ begin
     seed.birth_date,
     seed.is_living,
     seed.generation_index,
-    seed.bio,
     target_user_id
   from (
     values
-      ('Alex Tan', 'male', '2001-01-01'::date, true, 2, 'Current viewer node used as the kinship reference point for the seeded live tree.'),
-      ('Rachel Lee', 'female', '1999-07-16'::date, true, 2, 'Alex''s spouse, kept in the live seed so marriage and child edges can be checked together.'),
-      ('Grace Tan', 'female', '1998-03-08'::date, true, 2, 'Alex''s older sister and a sibling-path check for Chinese and English kinship labels.'),
-      ('Daniel Tan', 'male', '1972-05-11'::date, true, 1, 'Alex''s father and the main parent bridge to the grandparent generation.'),
-      ('Mei Chen', 'female', '1974-02-18'::date, true, 1, 'Alex''s mother and the second direct parent in the seeded family.'),
-      ('Tan Boon Kiat', 'male', '1941-10-02'::date, false, 0, 'Paternal grandfather whose branch anchors the older ancestry line.'),
-      ('Chloe Tan', 'female', '2024-04-02'::date, true, 3, 'Child of Alex and Rachel, included so descendant layout reads clearly.')
-  ) as seed(primary_name, gender, birth_date, is_living, generation_index, bio)
+      ('Alex Tan', 'male', '2001-01-01'::date, true, 2),
+      ('Rachel Lee', 'female', '1999-07-16'::date, true, 2),
+      ('Grace Tan', 'female', '1998-03-08'::date, true, 2),
+      ('Daniel Tan', 'male', '1972-05-11'::date, true, 1),
+      ('Tan Boon Kiat', 'male', '1941-10-02'::date, false, 0)
+  ) as seed(primary_name, gender, birth_date, is_living, generation_index)
   where not exists (
     select 1
     from public.people existing
@@ -113,17 +107,10 @@ begin
   limit 1;
 
   select id
-  into father_person_id
+  into uncle_person_id
   from public.people
   where family_tree_id = target_tree_id
     and primary_name = 'Daniel Tan'
-  limit 1;
-
-  select id
-  into mother_person_id
-  from public.people
-  where family_tree_id = target_tree_id
-    and primary_name = 'Mei Chen'
   limit 1;
 
   select id
@@ -131,13 +118,6 @@ begin
   from public.people
   where family_tree_id = target_tree_id
     and primary_name = 'Tan Boon Kiat'
-  limit 1;
-
-  select id
-  into child_person_id
-  from public.people
-  where family_tree_id = target_tree_id
-    and primary_name = 'Chloe Tan'
   limit 1;
 
   update public.memberships
@@ -164,15 +144,10 @@ begin
     target_user_id
   from (
     values
-      (grandparent_person_id, father_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
-      (father_person_id, mother_person_id, 'spouse'::public.relationship_type, 'active'::public.relationship_status),
-      (father_person_id, viewer_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
-      (mother_person_id, viewer_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
-      (father_person_id, sibling_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
-      (mother_person_id, sibling_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
-      (viewer_person_id, spouse_person_id, 'spouse'::public.relationship_type, 'active'::public.relationship_status),
-      (viewer_person_id, child_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
-      (spouse_person_id, child_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status)
+      (grandparent_person_id, uncle_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
+      (uncle_person_id, viewer_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
+      (uncle_person_id, sibling_person_id, 'biological_parent'::public.relationship_type, 'active'::public.relationship_status),
+      (viewer_person_id, spouse_person_id, 'spouse'::public.relationship_type, 'active'::public.relationship_status)
   ) as seed(from_person_id, to_person_id, relationship_type, status)
   where not exists (
     select 1
@@ -200,8 +175,8 @@ begin
     'pending'::public.suggested_edit_status
   from (
     values
-      ('person', 'update_title_override', '{"targetName":"Grace Tan","requestedTitle":"姐姐"}'::jsonb),
-      ('person', 'add_photo', '{"personName":"Tan Boon Kiat"}'::jsonb)
+      ('person', 'update_title_override', '{"targetName":"Daniel Tan","requestedTitle":"叔叔"}'::jsonb),
+      ('relationship', 'add_person', '{"personName":"Sarah Tan","relationship":"daughter"}'::jsonb)
   ) as seed(target_entity_type, action_type, proposed_change_json)
   where not exists (
     select 1
@@ -231,7 +206,7 @@ begin
     values
       ('family_tree', target_tree_id, 'seeded', 'Initial Supabase seed applied'),
       ('membership', viewer_person_id, 'linked', 'Viewer membership linked to person node'),
-      ('relationship', child_person_id, 'created', 'Initial family relationships seeded')
+      ('relationship', uncle_person_id, 'created', 'Initial family relationships seeded')
   ) as seed(entity_type, entity_id, action, summary)
   where not exists (
     select 1

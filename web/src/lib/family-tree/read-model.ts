@@ -1,4 +1,5 @@
 import type { Database } from "@/lib/database.types";
+import { deriveFamilyUnits } from "@/lib/family-tree/family-units";
 import type {
   ActivityEntry,
   FamilyTreeSnapshot,
@@ -15,6 +16,17 @@ type PersonRow = Database["public"]["Tables"]["people"]["Row"];
 type RelationshipRow = Database["public"]["Tables"]["relationships"]["Row"];
 type SuggestedEditRow = Database["public"]["Tables"]["suggested_edits"]["Row"];
 type ActivityLogRow = Database["public"]["Tables"]["activity_logs"]["Row"];
+
+const PRIMARY_PARENT_RELATIONSHIP_TYPES: RelationshipRow["relationship_type"][] = [
+  "biological_parent",
+  "adoptive_parent",
+  "guardian",
+];
+
+const PARENT_CHILD_RELATIONSHIP_TYPES: RelationshipRow["relationship_type"][] = [
+  ...PRIMARY_PARENT_RELATIONSHIP_TYPES,
+  "step_parent",
+];
 
 const NODE_WIDTH = 208;
 const NODE_HEIGHT = 248;
@@ -75,6 +87,7 @@ export function buildFamilyTreeSnapshot(params: {
     );
 
   const selectedPersonId = viewerPersonId;
+  const mappedRelationships = relationships.map(mapRelationship);
 
   return {
     id: tree.id,
@@ -86,7 +99,8 @@ export function buildFamilyTreeSnapshot(params: {
     selectedPersonId,
     viewerRole: mapViewerRole(membership.role),
     people: mappedPeople,
-    relationships: relationships.map(mapRelationship),
+    relationships: mappedRelationships,
+    familyUnits: deriveFamilyUnits(mappedRelationships),
     suggestions: suggestions.map((suggestion) => ({
       id: suggestion.id,
       label: buildSuggestionLabel(suggestion),
@@ -240,17 +254,30 @@ function deriveKinshipTitle(params: {
       return fallbackKinshipTitle(target);
     }
 
-    if (isParentOf(relationships, middleId, viewerId) && isParentOf(relationships, middleId, finalId)) {
+    if (
+      isParentOf(relationships, middleId, viewerId) &&
+      isParentOf(relationships, middleId, finalId)
+    ) {
       return mapSiblingKinshipTitle(peopleMap.get(viewerId), target);
     }
 
-    if (isParentOf(relationships, middleId, viewerId) && isParentOf(relationships, finalId, middleId)) {
-      return mapGrandparentKinshipTitle(middle, target);
+    if (
+      isParentOf(relationships, middleId, viewerId) &&
+      isParentOf(relationships, finalId, middleId)
+    ) {
+      return mapGrandparentKinshipTitle(middle, target, {
+        preserveLineageLabels:
+          isBiologicalParentOf(relationships, middleId, viewerId) &&
+          isBiologicalParentOf(relationships, finalId, middleId),
+      });
     }
 
-    if (isParentOf(relationships, viewerId, middleId) && directSpouseOf(relationships, middleId, finalId)) {
+    if (
+      isParentLikeOf(relationships, viewerId, middleId) &&
+      directSpouseOf(relationships, middleId, finalId)
+    ) {
       return {
-        chineseTitle: "女婿",
+        chineseTitle: "子女的配偶",
         englishTitle: "Child's spouse",
       };
     }
@@ -276,38 +303,58 @@ function buildEnglishTitle(person: PersonRow) {
 
 function mapDirectKinshipTitle(relationship: RelationshipRow, target: PersonRow) {
   if (relationship.relationship_type === "spouse") {
-    if (target.gender === "male") {
-      return { chineseTitle: "丈夫", englishTitle: "Husband" };
-    }
-
-    if (target.gender === "female") {
-      return { chineseTitle: "妻子", englishTitle: "Wife" };
-    }
-
-    return { chineseTitle: "配偶", englishTitle: "Spouse" };
+    return relationship.status === "active"
+      ? { chineseTitle: "伴侣", englishTitle: "Partner" }
+      : { chineseTitle: "前伴侣", englishTitle: "Former partner" };
   }
 
-  if (relationship.from_person_id === target.id) {
-    if (target.gender === "male") {
-      return { chineseTitle: "爸爸", englishTitle: "Father" };
-    }
+  const isParentOfViewer = relationship.from_person_id === target.id;
 
-    if (target.gender === "female") {
-      return { chineseTitle: "妈妈", englishTitle: "Mother" };
-    }
-
-    return { chineseTitle: "父母", englishTitle: "Parent" };
+  if (relationship.relationship_type === "adoptive_parent") {
+    return isParentOfViewer
+      ? mapGenderedTitle(target, {
+          male: { chineseTitle: "养父", englishTitle: "Adoptive father" },
+          female: { chineseTitle: "养母", englishTitle: "Adoptive mother" },
+          neutral: { chineseTitle: "养父母", englishTitle: "Adoptive parent" },
+        })
+      : mapGenderedTitle(target, {
+          male: { chineseTitle: "养子", englishTitle: "Adopted son" },
+          female: { chineseTitle: "养女", englishTitle: "Adopted daughter" },
+          neutral: { chineseTitle: "养子女", englishTitle: "Adopted child" },
+        });
   }
 
-  if (target.gender === "male") {
-    return { chineseTitle: "儿子", englishTitle: "Son" };
+  if (relationship.relationship_type === "step_parent") {
+    return isParentOfViewer
+      ? mapGenderedTitle(target, {
+          male: { chineseTitle: "继父", englishTitle: "Step-father" },
+          female: { chineseTitle: "继母", englishTitle: "Step-mother" },
+          neutral: { chineseTitle: "继父母", englishTitle: "Step-parent" },
+        })
+      : mapGenderedTitle(target, {
+          male: { chineseTitle: "继子", englishTitle: "Step-son" },
+          female: { chineseTitle: "继女", englishTitle: "Step-daughter" },
+          neutral: { chineseTitle: "继子女", englishTitle: "Step-child" },
+        });
   }
 
-  if (target.gender === "female") {
-    return { chineseTitle: "女儿", englishTitle: "Daughter" };
+  if (relationship.relationship_type === "guardian") {
+    return isParentOfViewer
+      ? { chineseTitle: "监护人", englishTitle: "Guardian" }
+      : { chineseTitle: "受监护人", englishTitle: "Ward" };
   }
 
-  return { chineseTitle: "孩子", englishTitle: "Child" };
+  return isParentOfViewer
+    ? mapGenderedTitle(target, {
+        male: { chineseTitle: "爸爸", englishTitle: "Father" },
+        female: { chineseTitle: "妈妈", englishTitle: "Mother" },
+        neutral: { chineseTitle: "父母", englishTitle: "Parent" },
+      })
+    : mapGenderedTitle(target, {
+        male: { chineseTitle: "儿子", englishTitle: "Son" },
+        female: { chineseTitle: "女儿", englishTitle: "Daughter" },
+        neutral: { chineseTitle: "孩子", englishTitle: "Child" },
+      });
 }
 
 function mapSiblingKinshipTitle(viewer: PersonRow | undefined, target: PersonRow) {
@@ -328,7 +375,15 @@ function mapSiblingKinshipTitle(viewer: PersonRow | undefined, target: PersonRow
   return { chineseTitle: "兄弟姐妹", englishTitle: "Sibling" };
 }
 
-function mapGrandparentKinshipTitle(parent: PersonRow, target: PersonRow) {
+function mapGrandparentKinshipTitle(
+  parent: PersonRow,
+  target: PersonRow,
+  options?: { preserveLineageLabels?: boolean },
+) {
+  if (!options?.preserveLineageLabels) {
+    return { chineseTitle: "祖父母", englishTitle: "Grandparent" };
+  }
+
   if (parent.gender === "male") {
     if (target.gender === "male") {
       return { chineseTitle: "爷爷", englishTitle: "Paternal grandfather" };
@@ -390,7 +445,36 @@ function isParentOf(
 ) {
   return relationships.some((relationship) => {
     return (
+      isPrimaryParentRelationship(relationship) &&
+      relationship.from_person_id === parentPersonId &&
+      relationship.to_person_id === childPersonId
+    );
+  });
+}
+
+function isBiologicalParentOf(
+  relationships: RelationshipRow[],
+  parentPersonId: string,
+  childPersonId: string,
+) {
+  return relationships.some((relationship) => {
+    return (
       relationship.relationship_type === "biological_parent" &&
+      relationship.status !== "inactive" &&
+      relationship.from_person_id === parentPersonId &&
+      relationship.to_person_id === childPersonId
+    );
+  });
+}
+
+function isParentLikeOf(
+  relationships: RelationshipRow[],
+  parentPersonId: string,
+  childPersonId: string,
+) {
+  return relationships.some((relationship) => {
+    return (
+      isActiveParentChildRelationship(relationship) &&
       relationship.from_person_id === parentPersonId &&
       relationship.to_person_id === childPersonId
     );
@@ -409,6 +493,10 @@ function getPathBetweenPeople(
   const adjacency = new Map<string, string[]>();
 
   for (const relationship of relationships) {
+    if (!shouldIncludeRelationshipInPath(relationship)) {
+      continue;
+    }
+
     appendAdjacent(adjacency, relationship.from_person_id, relationship.to_person_id);
     appendAdjacent(adjacency, relationship.to_person_id, relationship.from_person_id);
   }
@@ -485,7 +573,15 @@ function buildBranchLabel(
   const directRelationship = getDirectRelationship(relationships, viewerPersonId, person.id);
 
   if (directRelationship?.relationship_type === "spouse") {
-    return "Marriage branch";
+    return directRelationship.status === "active" ? "Partner branch" : "Former partner branch";
+  }
+
+  if (directRelationship) {
+    const directBranch = mapDirectBranchLabel(directRelationship, person.id);
+
+    if (directBranch) {
+      return directBranch;
+    }
   }
 
   if (isParentOf(relationships, person.id, viewerPersonId)) {
@@ -601,6 +697,10 @@ function getLayoutPriority(
 
   if (directRelationship?.relationship_type === "spouse") {
     return 1;
+  }
+
+  if (directRelationship) {
+    return directRelationship.from_person_id === viewerPersonId ? 2 : 5;
   }
 
   if (isParentOf(relationships, viewerPersonId, person.id)) {
@@ -897,14 +997,96 @@ function buildRowUnits(
 }
 
 function getParentsOf(relationships: RelationshipRow[], childPersonId: string) {
-  return relationships
-    .filter((relationship) => {
-      return (
-        relationship.relationship_type === "biological_parent" &&
-        relationship.to_person_id === childPersonId
-      );
-    })
-    .map((relationship) => relationship.from_person_id);
+  const activeEdges = relationships.filter((relationship) => {
+    return isActiveParentChildRelationship(relationship) && relationship.to_person_id === childPersonId;
+  });
+  const primaryParentIds = Array.from(
+    new Set(
+      activeEdges
+        .filter(isPrimaryParentRelationship)
+        .map((relationship) => relationship.from_person_id),
+    ),
+  ).sort();
+
+  if (primaryParentIds.length !== 1) {
+    return primaryParentIds;
+  }
+
+  const stepParentIds = Array.from(
+    new Set(
+      activeEdges
+        .filter((relationship) => relationship.relationship_type === "step_parent")
+        .map((relationship) => relationship.from_person_id),
+    ),
+  ).sort();
+
+  return stepParentIds.length > 0
+    ? [primaryParentIds[0], ...stepParentIds].sort()
+    : primaryParentIds;
+}
+
+function shouldIncludeRelationshipInPath(relationship: RelationshipRow) {
+  return (
+    relationship.relationship_type === "spouse" || isActiveParentChildRelationship(relationship)
+  );
+}
+
+function isActiveParentChildRelationship(relationship: RelationshipRow) {
+  return (
+    PARENT_CHILD_RELATIONSHIP_TYPES.includes(relationship.relationship_type) &&
+    relationship.status !== "inactive"
+  );
+}
+
+function isPrimaryParentRelationship(relationship: RelationshipRow) {
+  return (
+    PRIMARY_PARENT_RELATIONSHIP_TYPES.includes(relationship.relationship_type) &&
+    relationship.status !== "inactive"
+  );
+}
+
+function mapGenderedTitle<T>(
+  person: PersonRow,
+  options: {
+    male: T;
+    female: T;
+    neutral: T;
+  },
+) {
+  if (person.gender === "male") {
+    return options.male;
+  }
+
+  if (person.gender === "female") {
+    return options.female;
+  }
+
+  return options.neutral;
+}
+
+function mapDirectBranchLabel(
+  relationship: RelationshipRow,
+  targetPersonId: string,
+) {
+  const isParentOfViewer = relationship.from_person_id === targetPersonId;
+
+  if (relationship.relationship_type === "adoptive_parent") {
+    return isParentOfViewer ? "Parent branch" : "Descendant branch";
+  }
+
+  if (relationship.relationship_type === "step_parent") {
+    return isParentOfViewer ? "Step-parent branch" : "Step-child branch";
+  }
+
+  if (relationship.relationship_type === "guardian") {
+    return isParentOfViewer ? "Guardian branch" : "Ward branch";
+  }
+
+  if (relationship.relationship_type === "biological_parent") {
+    return isParentOfViewer ? "Parent branch" : "Descendant branch";
+  }
+
+  return null;
 }
 
 function getGenerationKey(person: PersonRow) {

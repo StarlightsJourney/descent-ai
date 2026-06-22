@@ -4,6 +4,10 @@
 
 This document defines the initial entities needed for the private collaborative family tree MVP.
 
+Companion reference:
+
+- [Family-Unit Relationship Contract](family-unit-contract.md)
+
 ## Core Entities
 
 ### User
@@ -249,11 +253,23 @@ This derived layer is important because it gives the renderer and future mutatio
 
 - multiple current partners
 - former partners
+- same-sex partner families
 - adopted children
 - step children
 - guardian or non-biological parenting cases
+- unknown or intentionally hidden parents represented by placeholders
 
 The backend does not need a separate persisted `family_units` table immediately. The near-term plan is to derive those units from the existing `people` and `relationships` graph first, then let UI and mutation flows consume that derived model.
+
+Current repo-state note:
+
+- this derived layer is already present in the shared frontend snapshot type and is now built in both demo data and the live Supabase read model
+- the workspace already uses `familyUnits` for branch filtering and connector grouping, so the active direction is no longer "whether" to derive family units but how far to push them into layout, navigation, and mutation UX next
+- the current interaction model is branch-first: family units are becoming the selectable network branches around the chosen person, while full-tree mode is being treated as orientation-only
+
+The raw-edge semantics required for that derivation are now formalized in:
+
+- [Family-Unit Relationship Contract](family-unit-contract.md)
 
 ### Store enough data for future relationship intelligence
 
@@ -323,6 +339,41 @@ The current frontend already assumes this model shape conceptually, even though 
 - suggestions
 - activity feed
 - stats
+
+That read model direction is now partially real rather than only conceptual:
+
+- live snapshots already hydrate `people`, `relationships`, and derived `familyUnits`
+- the active remaining gap is not basic read shape but richer write semantics and family-unit-aware layout behavior
+
+## Near-Term Read-Model Work
+
+- keep raw `relationships` as the write target and source of truth
+- continue treating `familyUnits` as an additive derived layer for reading, filtering, and rendering
+- add richer branch metadata around each derived family unit so the UI can explain active branch choice, former-partner history, and mixed parentage more clearly
+- extend mutation flows so person edits stay simple, but relationship and branch edits can eventually target a family unit and translate back into edge mutations safely
+
+## Known Modeling And UX Gaps
+
+- full-tree mode still reflects the limits of generation-row and spouse-adjacency heuristics; the data shape is ahead of the layout engine
+- derived family units currently stabilize connector grouping and branch visibility, but they do not yet drive absolute positioning strongly enough for dense multi-partner trees
+- selection UX still needs a clearer separation between `layout state` and `camera state`: choosing a person should generally move the viewport to stable node positions rather than causing nearby nodes to swap places
+- interaction polish is still incomplete around active-branch explanation, camera behavior after branch changes, and the boundary between overview mode and working mode
+- the renderer will likely need an explicit partnership-anchor or family-unit-anchor concept in layout, even if that anchor remains derived rather than persisted, because dense multi-partner cases do not scale cleanly from direct person-to-person spouse lines alone
+- current direct-edit work is still person-detail-first, so the repo does not yet expose the full family-unit mutation contract in UI or API form
+- placeholder-parent support still needs to be formalized in the actual person and mutation model so unknown or intentionally hidden parents can anchor branches without pretending the parent is absent
+- renderer and mutation logic must remain gender-neutral for partner units; same-sex partner plus adoption cases should use the same spouse and adoptive-parent semantics as any other family unit
+
+## Layout Implications Of The Existing Model
+
+The current graph model can already support a better interaction style than the current renderer exposes.
+
+Important consequences:
+
+- people and relationships remain the source of truth
+- `familyUnits` remain the derived branch-level read model
+- complex renderer behavior may introduce temporary derived `partnership anchors` or `family-unit anchors` purely for layout and edge routing
+- those anchors do not need to become first-class persisted database entities unless future mutation flows require direct editing against them
+- deceased presentation should remain a visual-state concern layered onto the existing person model, not a separate relationship structure
 
 The next technical decision is not the entity model itself. That is mostly established. The next decision is which backend stack will implement this model for MVP, especially for:
 
